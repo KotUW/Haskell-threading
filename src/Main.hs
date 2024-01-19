@@ -1,50 +1,50 @@
-import Control.Concurrent (forkIO, threadDelay)
-import Control.Monad (void,  replicateM_)
-import System.Random (randomRIO)
+import Control.Concurrent
+import Control.Monad
+import System.Environment
+import System.Exit
+import System.Random
 
--- A list of texts to post
-texts :: [String]
-texts = ["Hello, world!", "How are you?", "Nice weather today.", "I'm a Haskell bot."]
+type MessageBox = MVar (Int, String)
+type User = Int
 
--- A list of user names
-users :: [String]
-users = ["User1", "User2", "User3", "User3", "User4", "User5", "User6", "User7", "User8"]
-postRandomText :: String -> IO ()
-postRandomText user = do
-    -- Choose a random text
-    textIndex <- randomRIO (0, length texts - 1)
-    let text = texts !! textIndex
+-- Helper function to generate a receiver ID that is different from the sender's ID
+getReceiver :: Int -> Int -> IO Int
+getReceiver numUsers senderId = do
+    receiverId <- randomRIO (0, numUsers - 1)
+    if receiverId == senderId
+        then getReceiver numUsers senderId
+        else return receiverId
 
-    -- Print the text
-    putStrLn (user ++ ": " ++ text)
-
-userThread 0 = do 
-    putStrLn "Terminating Thread."
-    
-userThread numOfMsgs = do 
-    userIndex <- randomRIO(0, length users -1)
-    let userId = users !! userIndex
-
-    postRandomText userId
-    -- Wait for a random amount of time (between 1 and 5 seconds)
-    -- delay <- randomRIO (1, 5)
-    -- threadDelay (delay * 1000000)  -- threadDelay takes microseconds
-
-    userThread (numOfMsgs - 1)
-
--- The thread function
-threadFunction :: Int -> IO ()
-threadFunction n = replicateM_ n $ userThread 10
+-- Simulate a user's activity
+userActivity :: User -> Int -> [MessageBox] -> IO ()
+userActivity user numMessages messageBoxes = do
+    putStrLn $ "User " ++ show user ++ " is active."
+    forM_ [1..numMessages] $ \msgNum -> do
+        let message = "Hello from user " ++ show user ++ ", message " ++ show msgNum
+        receiver <- getReceiver (length messageBoxes) user
+        putMVar (messageBoxes !! receiver) (user, message)
+        -- threadDelay 100  -- Simulate time delay for user activity
+    --     maybeMessage <- tryReadMVar (messageBoxes !! user)
+    --     case maybeMessage of
+    --         Nothing -> putStrLn "Skipping Message not meant for me."
+    --         Just (sender, receivedMessage) -> putStrLn $ "User " ++ show user ++ " received a message from user " ++ show sender ++ ": " ++ receivedMessage
+    putStrLn $ "User " ++ show user ++ " has finished their activity."
 
 main :: IO ()
 main = do
-    putStr "Enter the number of threads to spawn:"
-    n <- readLn :: IO Int
-
-    -- Create the thread
-    void $ forkIO $ threadFunction n
-
-    -- Wait for the user to press enter before exiting the main thread
-    putStrLn "Press enter to exit."
-    _ <- getLine
-    return ()
+    args <- getArgs
+    if length args<2 then do
+        putStrLn "Invalid number of Args."
+        putStrLn "Usage: stack run <num of users> <num of messages>"
+        exitWith (ExitFailure 1)
+    else do
+        let numUsers = read (args !! 0) :: Int
+        let numMessages = read (args !! 1) :: Int
+        putStrLn $ "Simulating " ++ show numUsers ++ " users, each sending " ++ show numMessages ++ " messages."
+        messageBoxes <- replicateM numUsers newEmptyMVar
+        let users = [0..numUsers-1]
+        forM_ users $ \user -> do
+            forkIO (userActivity user numMessages messageBoxes)
+        -- Wait for user input to end the program
+        -- _ <- getLine
+        -- putStrLn "Simulation ended."
