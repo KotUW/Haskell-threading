@@ -38,7 +38,7 @@ userThread user allUsers = do
   -- totalMessages <- readMVar (messagesReceived user)
 
   -- Send messages to random users
-  replicateM_ 13 $ do
+  replicateM_ 18 $ do
     recipient <- getRandomRecipient allUsers
     let content = userName' ++ ": Hello, " ++ userName recipient ++ "!"
 -- Release the lock on the sender's inbox before sending the message

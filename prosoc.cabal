@@ -4,7 +4,7 @@ cabal-version: 2.2
 --
 -- see: https://github.com/sol/hpack
 
-name:           love
+name:           prosoc
 version:        0.1.0.0
 description:    Please see the README on GitHub at <https://github.com/githubuser/love#readme>
 homepage:       https://github.com/kotuw/prosoc#readme
@@ -26,9 +26,9 @@ source-repository head
 executable prosoc-exe
   main-is: Main.hs
   other-modules:
-      Paths_love
+      Paths_prosoc
   autogen-modules:
-      Paths_love
+      Paths_prosoc
   hs-source-dirs:
       src
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
