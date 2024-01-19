@@ -1,50 +1,116 @@
-import Control.Concurrent
-import Control.Monad
-import System.Environment
-import System.Exit
-import System.Random
+{-# LANGUAGE GADTs #-}
+import Control.Concurrent ( forkIO, MVar, takeMVar )
+import Control.Monad (replicateM_, replicateM )
+import Control.Concurrent.MVar
+    ( newEmptyMVar, newMVar, modifyMVar_, readMVar, tryPutMVar )
+import GHC.Conc (threadDelay)
+import System.Random (randomRIO)
+import Data.Foldable (forM_)
+import System.Timeout (timeout)
 
-type MessageBox = MVar (Int, String)
-type User = Int
+data Message where
+  Msg :: String -> Message
 
--- Helper function to generate a receiver ID that is different from the sender's ID
-getReceiver :: Int -> Int -> IO Int
-getReceiver numUsers senderId = do
-    receiverId <- randomRIO (0, numUsers - 1)
-    if receiverId == senderId
-        then getReceiver numUsers senderId
-        else return receiverId
+data User where
+  User :: {userName :: String,
+             messagesReceived :: Control.Concurrent.MVar Int,
+             inbox :: Control.Concurrent.MVar Message} ->
+            User
 
--- Simulate a user's activity
-userActivity :: User -> Int -> [MessageBox] -> IO ()
-userActivity user numMessages messageBoxes = do
-    putStrLn $ "User " ++ show user ++ " is active."
-    forM_ [1..numMessages] $ \msgNum -> do
-        let message = "Hello from user " ++ show user ++ ", message " ++ show msgNum
-        receiver <- getReceiver (length messageBoxes) user
-        putMVar (messageBoxes !! receiver) (user, message)
-        -- threadDelay 100  -- Simulate time delay for user activity
-    --     maybeMessage <- tryReadMVar (messageBoxes !! user)
-    --     case maybeMessage of
-    --         Nothing -> putStrLn "Skipping Message not meant for me."
-    --         Just (sender, receivedMessage) -> putStrLn $ "User " ++ show user ++ " received a message from user " ++ show sender ++ ": " ++ receivedMessage
-    putStrLn $ "User " ++ show user ++ " has finished their activity."
+-- | Function to generate a random user name
+generateRandomUserName :: IO String
+generateRandomUserName = replicateM 3 (randomRIO ('a', 'z'))
+
+createUser :: IO User
+createUser = do
+  name <- generateRandomUserName
+  messagesCounter <- newMVar 0
+  User name messagesCounter <$> newEmptyMVar
+
+getRandomRecipient :: [User] -> IO User
+getRandomRecipient recipients = do
+  index <- randomRIO (0, 9)
+  return $ recipients !! index
+
+userThread :: User -> [User] -> IO ()
+userThread user allUsers = do
+  let userName' = userName user
+  -- totalMessages <- readMVar (messagesReceived user)
+
+  -- Send messages to random users
+  replicateM_ 13 $ do
+    recipient <- getRandomRecipient allUsers
+    let content = userName' ++ ": Hello, " ++ userName recipient ++ "!"
+-- Release the lock on the sender's inbox before sending the message
+    _ <- sendMessage recipient content
+    putStrLn $ userName' ++ " is Sending message"
+-- Wait for a short delay to simulate processing time
+    -- threadDelay (500 * 1000)  -- 0.5 seconds
+
+    receiveMode user
+
+receiveMode :: User -> IO ()
+receiveMode user = do
+  putStrLn $ userName user ++ " is entering receive mode..."
+  replicateM_ 5 $ do
+    putStrLn $ userName user ++ " is waiting for a message..."
+    timedReceive user
+
+    modifyMVar_ (messagesReceived user) (\count -> return $ count + 1)
+    currentCount <- readMVar (messagesReceived user)
+    putStrLn $ userName user ++ " has received " ++ show currentCount ++ " messages so far."
+
+timedReceive :: User -> IO ()
+timedReceive user = do
+  result <- timeout (3 * 10^6) $ takeMVar (inbox user)  -- Wait for 3 seconds
+  case result of
+    Just _  -> putStrLn $ userName user ++ " received a message!"
+    Nothing -> putStrLn $ userName user ++ " timed out waiting for a message. Moving to the next replicate step."
+
+  modifyMVar_ (messagesReceived user) (\count -> return $ count + 1)
+  currentCount <- readMVar (messagesReceived user)
+  putStrLn $ userName user  ++ " has received " ++ show currentCount ++ " messages so far."
+
+sendMessage :: User -> String -> IO Bool
+sendMessage recipient content = do
+  tryPutMVar (inbox recipient) (Msg content)
+
+
+printMessageCounts :: [User] -> IO ()
+printMessageCounts users = do
+  putStrLn "\n\n\n---------------------"
+  putStrLn "Message counts:"
+  forM_ users $ \user -> do
+    count <- readMVar (messagesReceived user)
+    putStrLn $ userName user ++ ": " ++ show count
 
 main :: IO ()
 main = do
-    args <- getArgs
-    if length args<2 then do
-        putStrLn "Invalid number of Args."
-        putStrLn "Usage: stack run <num of users> <num of messages>"
-        exitWith (ExitFailure 1)
-    else do
-        let numUsers = read (args !! 0) :: Int
-        let numMessages = read (args !! 1) :: Int
-        putStrLn $ "Simulating " ++ show numUsers ++ " users, each sending " ++ show numMessages ++ " messages."
-        messageBoxes <- replicateM numUsers newEmptyMVar
-        let users = [0..numUsers-1]
-        forM_ users $ \user -> do
-            forkIO (userActivity user numMessages messageBoxes)
-        -- Wait for user input to end the program
-        -- _ <- getLine
-        -- putStrLn "Simulation ended."
+  user1 <- createUser
+  user2 <- createUser
+  user3 <- createUser
+  user4 <- createUser
+  user5 <- createUser
+  user6 <- createUser
+  user7 <- createUser
+  user8 <- createUser
+  user9 <- createUser
+  user10 <- createUser
+
+  let users = [user1, user2, user3, user4, user5, user6, user7, user8, user9, user10]
+  _ <- Control.Concurrent.forkIO (userThread user1 users)
+  _ <- Control.Concurrent.forkIO (userThread user2 users)
+  _ <- Control.Concurrent.forkIO (userThread user3 users)
+  _ <- Control.Concurrent.forkIO (userThread user4 users)
+  _ <- Control.Concurrent.forkIO (userThread user5 users)
+  _ <- Control.Concurrent.forkIO (userThread user6 users)
+  _ <- Control.Concurrent.forkIO (userThread user7 users)
+  _ <- Control.Concurrent.forkIO (userThread user8 users)
+  _ <- Control.Concurrent.forkIO (userThread user9 users)
+  _ <- Control.Concurrent.forkIO (userThread user10 users)
+
+  -- Wait for threads to finish processing
+  threadDelay (5 *1000000 )  -- 5 seconds delay to allow threads to finish
+
+  -- Print message counts
+  printMessageCounts users
